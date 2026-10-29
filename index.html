@@ -91,6 +91,7 @@ body:not(.staff) .staffonly{display:none!important}
     <select id="fwho" aria-label="Filter by team member"></select>
     <label class="ck"><input type="checkbox" id="hd"> Hide handed off</label>
     <span class="grow"></span>
+    <button class="btn ghost" id="b-ch">Choices</button>
     <button class="btn ghost" id="b-sync">Sync orders</button>
     <button class="btn" id="b-add">Add order</button>
   </div>
@@ -191,6 +192,17 @@ function syncRows(list){var added=0,upd=0,same=0,byT={},byN={};
   if(ch)upd++;else same++});
  return{added:added,upd:upd,same:same}}
 
+function nmatch(a,b){if(nz(a)&&nz(a)===nz(b))return true;var x=String(a||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/),y=String(b||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/);
+ return x.length>1&&y.length>1&&x[0]===y[0]&&x[x.length-1][0]===y[y.length-1][0]}
+function cmatch(a,b){var x=cinfo(a),y=cinfo(b);if(x.e.some(function(m){return y.e.indexOf(m)>-1}))return true;return x.d.length>=10&&y.d.length>=10&&(x.d.indexOf(y.d)>-1||y.d.indexOf(x.d)>-1)}
+function applyChoices(rows){var res={matched:0,added:0};
+ rows.forEach(function(c){var meth=c.choice==="shipping"?"delivery":(c.choice==="other"?"other":"pickup");
+  var hit=S.orders.filter(function(o){return nmatch(c.name,o.name)&&cmatch(c.contact,o.contact)});
+  if(!hit.length){var n={id:uid(),key:"",name:c.name,contact:c.contact,item:"Hoodie",size:"",qty:1,paid:false,method:meth,addr:"",slot:"",who:"",know:"",notes:"No matching order found",packed:false,done:false,created:Date.now()};S.orders.push(n);hit=[n];res.added++}else res.matched++;
+  hit.forEach(function(o){o.method=meth;o.slot=meth==="pickup"?canon(c.slot||""):"";if(meth==="delivery")o.addr=c.address||o.addr||"";
+   if(c.knows){o.know=c.knows;if(!o.who){var w=matchWho(c.knows);if(w)o.who=w}}})});
+ return res}
+
 var $=function(i){return document.getElementById(i)};
 function load(){S={orders:[],team:[],staff:{},offered:["Tuesday 12–2 PM"]}}
 function save(){if(typeof CLOUD!=="undefined"&&CLOUD)queue()}
@@ -249,13 +261,21 @@ $("b-clear").onclick=function(){var b=$("b-clear");if(!clrArm){clrArm=true;b.tex
  clearTimeout(clrT);clrArm=false;b.textContent="Clear all orders";S.orders=[];S.staff={};save();render();say("Orders cleared")};
 $("t-add").onclick=function(){var n=$("t-name").value.trim();if(n&&S.team.indexOf(n)<0){S.team.push(n);$("t-name").value="";save();render()}$("t-name").focus()};
 $("t-name").onkeydown=function(e){if(e.key==="Enter")$("t-add").click()};
-$("o-add").onclick=function(){var n=$("o-name").value.trim();if(n&&S.offered.indexOf(n)<0){S.offered.push(n);$("o-name").value="";save();render()}$("o-name").focus()};
+$("o-add").onclick=function(){var n=$("o-name").value.trim();if(n&&S.offered.indexOf(n)<0){S.offered.push(n);$("o-name").value="";save();pushConfig();render()}$("o-name").focus()};
 $("o-name").onkeydown=function(e){if(e.key==="Enter")$("o-add").click()};
 $("assign").onclick=function(){if(!S.team.length){$("amsg").textContent="Add a team member first";return}$("amsg").textContent="";
  var ld={};S.team.forEach(function(t){ld[t]=0});S.staff={};
  slots().filter(function(s){return s.name!==NO}).sort(function(a,b){return b.orders.length-a.orders.length}).forEach(function(s){
   var best=S.team.slice().sort(function(a,b){return ld[a]-ld[b]})[0];S.staff[s.name]=best;ld[best]+=s.orders.length});
  save();render();tab("dash")};
+function pushConfig(){if(typeof CLOUD==="undefined"||!CLOUD)return;api("POST","public_config",{id:"main",data:{offered:S.offered}},{Prefer:"resolution=merge-duplicates,return=minimal"}).catch(function(){})}
+async function checkChoices(){if(!CLOUD)return;try{var r=await api("GET","fulfillment_choices?imported=eq.false&select=id");$("b-ch").textContent="Choices"+(r&&r.length?" ("+r.length+")":"")}catch(e){}}
+$("b-ch").onclick=async function(){try{var rows=await api("GET","fulfillment_choices?imported=eq.false&select=*&order=created_at.asc");
+ if(!rows||!rows.length){say("No new choices");return}
+ var r=applyChoices(rows);save();render();
+ await api("PATCH","fulfillment_choices?id=in.("+rows.map(function(x){return x.id}).join(",")+")",{imported:true},{Prefer:"return=minimal"});
+ say(rows.length+" choices applied"+(r.added?" · "+r.added+" without a matching order":""));checkChoices()}
+ catch(e){say("Couldn’t load choices. "+String(e.message).slice(0,80))}};
 function find(id){return S.orders.filter(function(x){return x.id===id})[0]}
 document.addEventListener("change",function(e){var t=e.target,d=t.dataset,o;
  if(d.staff){if(t.value)S.staff[d.staff]=t.value;else delete S.staff[d.staff]}
@@ -266,7 +286,7 @@ document.addEventListener("change",function(e){var t=e.target,d=t.dataset,o;
 document.addEventListener("click",function(e){var d=e.target.dataset;if(!d)return;
  if(d.del){if(armD===d.del){S.orders=S.orders.filter(function(x){return x.id!==d.del});armD=null;save();render()}
   else{armD=d.del;clearTimeout(armT);armT=setTimeout(function(){armD=null;render()},3000);render()}}
- else if(d.ro){S.offered.splice(+d.ro,1);save();render()}
+ else if(d.ro){S.offered.splice(+d.ro,1);save();pushConfig();render()}
  else if(d.rm){var n=S.team.splice(+d.rm,1)[0];Object.keys(S.staff).forEach(function(k){if(S.staff[k]===n)delete S.staff[k]});save();render()}});
 
 var SB="https://slwojgqrpchnnndtshiw.supabase.co",KEYP="sb_publishable_Iue4Yj73AoYHsmZf3aKdgw_NZ8qKU-7",SKEY="spero-session";
@@ -293,14 +313,14 @@ function flush(){if(!CLOUD||writing||!dirty)return;writing=true;dirty=false;var 
 function applyRemote(d){S.orders=JSON.parse(JSON.stringify(d.orders||[]));S.team=JSON.parse(JSON.stringify(d.team||[]));S.staff=JSON.parse(JSON.stringify(d.staff||{}));if(Array.isArray(d.offered))S.offered=JSON.parse(JSON.stringify(d.offered))}
 async function pull(){if(!CLOUD)return;
  try{var rows=await api("GET","planner_state?id=eq.main&select=data");
-  if(rows&&rows.length){var d=rows[0].data||{};if(!(d.rev&&d.rev===lastRev)){if(dirty||writing)return;applyRemote(d);render()}setSync("Shared with your team. Updates appear within about 15 seconds.")}
+  if(rows&&rows.length){var d=rows[0].data||{};if(!(d.rev&&d.rev===lastRev)){if(dirty||writing)return;applyRemote(d);render()}setSync("Shared with your team. Updates appear within about 15 seconds.");checkChoices()}
   else if(S.orders.length||S.team.length)queue();else setSync("Connected. Add your first order.")}
  catch(e){if(CLOUD)setSync("Couldn’t reach the shared planner. "+String(e.message).slice(0,100))}}
 function showLogin(msg){document.body.classList.remove("staff");CLOUD=null;dirty=false;writing=false;clearTimeout(tmr);load();$("who").textContent="";$("login").hidden=false;$("lmsg").textContent=msg||""}
 async function enterApp(){
  try{var rows=await api("GET","staff_emails?select=email");if(!rows||!rows.length){SES=null;sesSave();showLogin("This account isn’t on the staff list. Ask your admin to add your email.");return}}
  catch(e){if(SES)showLogin("Couldn’t reach the server. "+String(e.message).slice(0,100));return}
- document.body.classList.add("staff");$("login").hidden=true;$("who").textContent=SES.email;CLOUD=true;load();render();tab("dash");setSync("Loading…");await pull()}
+ document.body.classList.add("staff");$("login").hidden=true;$("who").textContent=SES.email;CLOUD=true;load();render();tab("dash");setSync("Loading…");await pull();pushConfig()}
 $("lbtn").onclick=async function(){var e=$("l-email").value.trim().toLowerCase(),p=$("l-pass").value;if(!e||!p){$("lmsg").textContent="Enter your email and password.";return}
  $("lmsg").textContent="Signing in…";
  try{setSes(await authCall("token?grant_type=password",{email:e,password:p}));$("l-pass").value="";await enterApp()}
