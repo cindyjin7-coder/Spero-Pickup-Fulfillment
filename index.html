@@ -56,6 +56,7 @@ input[type=search]{width:260px;max-width:100%}
 .tag{font-size:11px;border:1px solid var(--line);border-radius:99px;padding:1px 8px;margin-left:6px;white-space:nowrap}
 .tag.w{border-color:var(--warn);color:var(--warn)}
 .who{padding:4px 8px;font-size:12px;max-width:130px}
+.x2{background:none;cursor:pointer;font:inherit;font-size:11px}
 .x{background:none;border:0;color:var(--mute);cursor:pointer;padding:4px 6px;font-size:12px}
 .empty{color:var(--mute);padding:40px 0;text-align:center}
 .h3{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--mute);margin:0 0 10px}
@@ -207,7 +208,7 @@ function applyChoices(rows){var res={full:0,contact:0,name:0,added:0};
   if(hit.length)res[f.how]++;
   else{var um=S.orders.filter(function(o){return o.unmatched&&(cmatch(c.contact,o.contact)||nmatch(c.name,o.name))})[0];
    if(um)hit=[um];else{var n={id:uid(),key:"",name:c.name,contact:c.contact,item:"Hoodie",size:"",qty:1,paid:false,unmatched:true,method:meth,addr:"",slot:"",who:"",know:"",notes:"",packed:false,done:false,created:Date.now()};S.orders.push(n);hit=[n];res.added++}}
-  hit.forEach(function(o){o.method=meth;o.slot=meth==="pickup"?canon(c.slot||""):"";if(meth==="delivery")o.addr=c.address||o.addr||"";
+  hit.forEach(function(o){o.method=meth;o.slot=meth==="pickup"?canon(c.slot||""):"";if(meth==="delivery"){o.addr=c.address||o.addr||"";if(c.shipping_paid==="yes")o.shipPaid=true;else if(c.shipping_paid==="no")o.shipPaid=false}
    if(c.knows){o.know=c.knows;if(!o.who){var w=matchWho(c.knows);if(w)o.who=w}}})});
  return res}
 function healUnmatched(){var n=0;S.orders.slice().forEach(function(x){if(x.notes==="No matching order found"&&x.unmatched===undefined){x.unmatched=true;x.notes=""}
@@ -226,7 +227,7 @@ function tab(n){if(!isStaff())return;["dash","team"].forEach(function(t){$("tab-
 document.querySelectorAll("#nav button").forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});
 function orderRow(o,armed){var late7=late(o),hw=isDel(o)||isOther(o);
  return'<div class="o'+(o.done?" done":"")+'">'+
- '<div class="main"><b>'+esc(o.name)+'</b><span class="mute"> '+esc(o.contact)+'</span>'+(o.unmatched?'<span class="tag w">Needs match</span>':(!o.paid?'<span class="tag w">Unpaid</span>':""))+(late7?'<span class="tag w">'+age(o)+'d</span>':"")+
+ '<div class="main"><b>'+esc(o.name)+'</b><span class="mute"> '+esc(o.contact)+'</span>'+(o.unmatched?'<span class="tag w">Needs match</span>':(!o.paid?'<span class="tag w">Unpaid</span>':""))+(isDel(o)&&o.shipPaid===false?'<button class="tag w x2" data-sp="'+o.id+'" title="Mark shipping paid">Shipping $7 unpaid</button>':"")+(late7?'<span class="tag w">'+age(o)+'d</span>':"")+
  '<div class="sub">'+esc(o.item)+' '+esc(o.size)+(o.qty>1?' × '+o.qty:"")+(isDel(o)&&o.addr?' · '+esc(o.addr):"")+(o.notes?' · '+esc(o.notes):"")+(hw&&!o.who&&o.know?' · Knows: '+esc(o.know):"")+'</div></div>'+
  (o.unmatched?'<select class="who" data-merge="'+o.id+'" aria-label="Match to an order"><option value="">Match to order…</option><option value="__new">Keep as new order</option>'+S.orders.filter(function(x){return !x.unmatched&&x!==o}).sort(function(a,b){return a.name.toLowerCase()>b.name.toLowerCase()?1:-1}).map(function(x){return'<option value="'+x.id+'">'+esc(x.name)+' · '+esc(x.size||x.item)+'</option>'}).join("")+'</select>':"")+(hw?'<select class="who" data-who="'+o.id+'" aria-label="Handled by"><option value="">Unassigned</option>'+S.team.map(function(t){return'<option'+(o.who===t?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select>':"")+
  '<label class="ck"><input type="checkbox" data-dn="'+o.id+'"'+(o.done?" checked":"")+'>Handed off</label>'+
@@ -297,6 +298,7 @@ document.addEventListener("change",function(e){var t=e.target,d=t.dataset,o;
 document.addEventListener("click",function(e){var d=e.target.dataset;if(!d)return;
  if(d.del){if(armD===d.del){S.orders=S.orders.filter(function(x){return x.id!==d.del});armD=null;save();render()}
   else{armD=d.del;clearTimeout(armT);armT=setTimeout(function(){armD=null;render()},3000);render()}}
+ else if(d.sp){var so=find(d.sp);if(so){so.shipPaid=true;save();render()}}
  else if(d.ro){S.offered.splice(+d.ro,1);save();pushConfig();render()}
  else if(d.rm){var n=S.team.splice(+d.rm,1)[0];Object.keys(S.staff).forEach(function(k){if(S.staff[k]===n)delete S.staff[k]});save();render()}});
 

@@ -26,6 +26,8 @@ textarea{resize:vertical}
 button{width:100%;margin-top:8px;padding:13px;border:0;border-radius:6px;background:var(--accent);color:var(--on-accent);font:inherit;font-weight:500;cursor:pointer}
 button:disabled{opacity:.5;cursor:default}
 #msg{color:var(--warn);min-height:22px;margin:10px 0 0}
+.lab{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--mute);margin:0 0 6px}
+.note{margin:-4px 0 16px;font-weight:500}
 .hp{position:absolute;left:-9999px}
 #done{text-align:left}
 #done p{color:var(--mute)}
@@ -44,9 +46,11 @@ button:disabled{opacity:.5;cursor:default}
     <label class="opt"><input type="radio" name="c" value="shipping"><span><b>Shipping</b><small>We ship it to you</small></span></label>
     <label class="opt"><input type="radio" name="c" value="other"><span><b>Pick up another time</b><small>A team member you know gets it to you</small></span></label>
   </div>
-  <div id="b-pickup" hidden><label class="f">Time slot<select id="slot"></select></label></div>
-  <div id="b-shipping" hidden><label class="f">Shipping address<textarea id="addr" rows="3" maxlength="300" autocomplete="street-address"></textarea></label></div>
-  <div id="b-other" hidden><label class="f">Which Spero team member do you know?<input id="knows" maxlength="120"></label></div>
+  <div id="b-pickup" hidden><div class="lab">Time slot</div><div class="opts" id="slots" role="radiogroup" aria-label="Time slot"></div></div>
+  <div id="b-shipping" hidden><label class="f">Shipping address<textarea id="addr" rows="3" maxlength="300" autocomplete="street-address"></textarea></label>
+    <label class="f">Have you paid for shipping?<select id="sp"><option value="">Choose</option><option value="yes">Yes</option><option value="no">No</option></select></label>
+    <p class="note" id="sp-note" hidden>Shipping is $7.</p></div>
+  <div id="b-other" hidden><label class="f">Which Spero team member do you know?<select id="knows"><option value="">Choose</option><option>Hogan</option><option>Ethan</option><option>Mabel</option><option>Abigail</option><option>Michael</option><option>Cindy</option><option>Hailey</option><option>Bella</option><option>Sharon</option><option>Lauren</option><option>Katie</option><option>Ryan</option><option>Haram</option><option>Kaylin</option><option>Not Sure</option></select></label></div>
   <div class="hp" aria-hidden="true"><input id="website" tabindex="-1" autocomplete="off"></div>
   <button type="submit" id="go">Submit</button>
   <p id="msg" role="status"></p>
@@ -61,30 +65,34 @@ button:disabled{opacity:.5;cursor:default}
 var SB="https://slwojgqrpchnnndtshiw.supabase.co",KEY="sb_publishable_Iue4Yj73AoYHsmZf3aKdgw_NZ8qKU-7";
 var $=function(i){return document.getElementById(i)},offered=[];
 function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
-function fill(){var s=$("slot");
- if(!offered.length){s.innerHTML='<option value="">Times will be posted soon</option>';s.disabled=true;return}
- s.disabled=false;s.innerHTML='<option value="">Choose a time</option>'+offered.map(function(x){return'<option>'+esc(x)+'</option>'}).join("")}
+function fill(){var s=$("slots");
+ if(!offered.length){s.innerHTML='<p class="note" style="margin:0">Times will be posted soon.</p>';return}
+ s.innerHTML=offered.map(function(x){return'<label class="opt"><input type="radio" name="s" value="'+esc(x)+'"><span><b>'+esc(x)+'</b></span></label>'}).join("")}
 fetch(SB+"/rest/v1/public_config?id=eq.main&select=data",{headers:{apikey:KEY}}).then(function(r){return r.ok?r.json():[]}).then(function(rows){
  var d=rows&&rows[0]&&rows[0].data;offered=(d&&Array.isArray(d.offered))?d.offered:[];fill()}).catch(fill);
 fill();
 function pick(){var r=document.querySelector('input[name="c"]:checked');return r?r.value:""}
+function pickSlot(){var r=document.querySelector('input[name="s"]:checked');return r?r.value:""}
+$("sp").onchange=function(){$("sp-note").hidden=this.value!=="no"};
 Array.prototype.forEach.call(document.querySelectorAll('input[name="c"]'),function(r){r.onchange=function(){var c=pick();
  $("b-pickup").hidden=c!=="pickup";$("b-shipping").hidden=c!=="shipping";$("b-other").hidden=c!=="other";$("msg").textContent=""}});
-function finish(c,slot){$("f").hidden=true;$("done").hidden=false;
- var t=c==="pickup"?"See you at our table during "+slot+".":c==="shipping"?"We’ll ship your order to the address you gave us.":"A team member who knows you will get your order to you.";
+function finish(c,slot,spaid){$("f").hidden=true;$("done").hidden=false;
+ var t=c==="pickup"?"See you at our table during "+slot+".":c==="shipping"?"We’ll ship your order to the address you gave us."+(spaid==="no"?" Shipping is $7.":""):"A team member who knows you will get your order to you.";
  $("d-p").textContent=t}
 $("f").onsubmit=function(e){e.preventDefault();
- var c=pick(),n=$("name").value.trim(),ct=$("contact").value.trim(),sl=$("slot").value,ad=$("addr").value.trim(),kn=$("knows").value.trim(),m=$("msg");
- if($("website").value){finish(c,sl);return}
+ var c=pick(),n=$("name").value.trim(),ct=$("contact").value.trim(),sl=pickSlot(),ad=$("addr").value.trim(),sp=$("sp").value,kn=$("knows").value,m=$("msg");
+ if($("website").value){finish(c,sl,sp);return}
  if(!n){m.textContent="Please enter your name.";return}
  if(ct.length<3){m.textContent="Please enter a phone number or email.";return}
  if(!c){m.textContent="Please choose how you’d like to get your order.";return}
  if(c==="pickup"&&!sl){m.textContent="Please choose a time slot.";return}
  if(c==="shipping"&&!ad){m.textContent="Please enter your shipping address.";return}
+ if(c==="shipping"&&!sp){m.textContent="Please tell us whether you’ve paid for shipping.";return}
+ if(c==="other"&&!kn){m.textContent="Please choose a team member.";return}
  m.textContent="";$("go").disabled=true;
  fetch(SB+"/rest/v1/fulfillment_choices",{method:"POST",headers:{apikey:KEY,"Content-Type":"application/json",Prefer:"return=minimal"},
-  body:JSON.stringify({name:n,contact:ct,choice:c,slot:c==="pickup"?sl:null,address:c==="shipping"?ad:null,knows:c==="other"&&kn?kn:null})})
- .then(function(r){if(!r.ok)throw new Error("bad");finish(c,sl)})
+  body:JSON.stringify({name:n,contact:ct,choice:c,slot:c==="pickup"?sl:null,address:c==="shipping"?ad:null,shipping_paid:c==="shipping"?sp:null,knows:c==="other"?kn:null})})
+ .then(function(r){if(!r.ok)throw new Error("bad");finish(c,sl,sp)})
  .catch(function(){m.textContent="Something went wrong. Please try again.";$("go").disabled=false})};
 })();
 </script>
