@@ -196,7 +196,7 @@ function syncRows(list){var added=0,upd=0,same=0,byT={},byN={};
 function nmatch(a,b){if(nz(a)&&nz(a)===nz(b))return true;var x=String(a||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/),y=String(b||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/);
  return x.length>1&&y.length>1&&x[0]===y[0]&&x[x.length-1][0]===y[y.length-1][0]}
 function cmatch(a,b){var x=cinfo(a),y=cinfo(b);if(x.e.some(function(m){return y.e.indexOf(m)>-1}))return true;return x.d.length>=10&&y.d.length>=10&&(x.d.indexOf(y.d)>-1||y.d.indexOf(x.d)>-1)}
-function mergeInto(src,tgt){["method","slot","addr","know"].forEach(function(k){if(src[k])tgt[k]=src[k]});if(src.who&&!tgt.who)tgt.who=src.who;S.orders=S.orders.filter(function(o){return o!==src})}
+function mergeInto(src,tgt){["method","slot","addr","know"].forEach(function(k){if(src[k])tgt[k]=src[k]});if(src.who&&!tgt.who)tgt.who=src.who;if(!tgt.who&&tgt.know){var w=matchWho(tgt.know);if(w)tgt.who=w}S.orders=S.orders.filter(function(o){return o!==src})}
 function findOrder(c){var os=S.orders.filter(function(o){return !o.unmatched}),
  a=os.filter(function(o){return nmatch(c.name,o.name)&&cmatch(c.contact,o.contact)});if(a.length)return{hit:a,how:"full"};
  a=os.filter(function(o){return cmatch(c.contact,o.contact)});if(a.length)return{hit:a,how:"contact"};
@@ -210,6 +210,8 @@ function applyChoices(rows){var res={full:0,contact:0,name:0,added:0};
   hit.forEach(function(o){o.method=meth;o.slot=meth==="pickup"?canon(c.slot||""):"";if(meth==="delivery")o.addr=c.address||o.addr||"";
    if(c.knows){o.know=c.knows;if(!o.who){var w=matchWho(c.knows);if(w)o.who=w}}})});
  return res}
+function healUnmatched(){var n=0;S.orders.slice().forEach(function(x){if(x.notes==="No matching order found"&&x.unmatched===undefined){x.unmatched=true;x.notes=""}
+ if(!x.unmatched)return;var f=findOrder(x);if(f.hit.length){mergeInto(x,f.hit[0]);n++}});return n}
 
 var $=function(i){return document.getElementById(i)};
 function load(){S={orders:[],team:[],staff:{},offered:["Tuesday 12–2 PM"]}}
@@ -322,7 +324,7 @@ function flush(){if(!CLOUD||writing||!dirty)return;writing=true;dirty=false;var 
 function applyRemote(d){S.orders=JSON.parse(JSON.stringify(d.orders||[]));S.team=JSON.parse(JSON.stringify(d.team||[]));S.staff=JSON.parse(JSON.stringify(d.staff||{}));if(Array.isArray(d.offered))S.offered=JSON.parse(JSON.stringify(d.offered))}
 async function pull(){if(!CLOUD)return;
  try{var rows=await api("GET","planner_state?id=eq.main&select=data");
-  if(rows&&rows.length){var d=rows[0].data||{};if(!(d.rev&&d.rev===lastRev)){if(dirty||writing)return;applyRemote(d);render()}setSync("Shared with your team. Updates appear within about 15 seconds.");checkChoices()}
+  if(rows&&rows.length){var d=rows[0].data||{};if(!(d.rev&&d.rev===lastRev)){if(dirty||writing)return;applyRemote(d);if(healUnmatched())queue();render()}setSync("Shared with your team. Updates appear within about 15 seconds.");checkChoices()}
   else if(S.orders.length||S.team.length)queue();else setSync("Connected. Add your first order.")}
  catch(e){if(CLOUD)setSync("Couldn’t reach the shared planner. "+String(e.message).slice(0,100))}}
 function showLogin(msg){document.body.classList.remove("staff");CLOUD=null;dirty=false;writing=false;clearTimeout(tmr);load();$("who").textContent="";$("login").hidden=false;$("lmsg").textContent=msg||""}
