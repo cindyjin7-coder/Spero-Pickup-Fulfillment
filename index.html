@@ -225,7 +225,7 @@ function tab(n){if(!isStaff())return;["dash","team"].forEach(function(t){$("tab-
  document.querySelectorAll("#nav button").forEach(function(b){b.setAttribute("aria-selected",b.dataset.tab===n)});render()}
 document.querySelectorAll("#nav button").forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});
 function orderRow(o,armed){var late7=late(o),hw=isDel(o)||isOther(o);
- return'<div class="o'+(o.done?" done":"")+'"><label class="ck"><input type="checkbox" data-pk="'+o.id+'"'+(o.packed?" checked":"")+'>Bagged</label>'+
+ return'<div class="o'+(o.done?" done":"")+'">'+
  '<div class="main"><b>'+esc(o.name)+'</b><span class="mute"> '+esc(o.contact)+'</span>'+(o.unmatched?'<span class="tag w">Needs match</span>':(!o.paid?'<span class="tag w">Unpaid</span>':""))+(late7?'<span class="tag w">'+age(o)+'d</span>':"")+
  '<div class="sub">'+esc(o.item)+' '+esc(o.size)+(o.qty>1?' × '+o.qty:"")+(isDel(o)&&o.addr?' · '+esc(o.addr):"")+(o.notes?' · '+esc(o.notes):"")+(hw&&!o.who&&o.know?' · Knows: '+esc(o.know):"")+'</div></div>'+
  (o.unmatched?'<select class="who" data-merge="'+o.id+'" aria-label="Match to an order"><option value="">Match to order…</option><option value="__new">Keep as new order</option>'+S.orders.filter(function(x){return !x.unmatched&&x!==o}).sort(function(a,b){return a.name.toLowerCase()>b.name.toLowerCase()?1:-1}).map(function(x){return'<option value="'+x.id+'">'+esc(x.name)+' · '+esc(x.size||x.item)+'</option>'}).join("")+'</select>':"")+(hw?'<select class="who" data-who="'+o.id+'" aria-label="Handled by"><option value="">Unassigned</option>'+S.team.map(function(t){return'<option'+(o.who===t?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select>':"")+
