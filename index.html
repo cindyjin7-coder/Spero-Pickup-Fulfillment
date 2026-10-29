@@ -181,7 +181,8 @@ function syncRows(list){var added=0,upd=0,same=0,byT={},byN={};
  S.orders.forEach(function(o){if(o.key)byT[o.key]=o;byN[nkey(o)]=o});
  list.forEach(function(r){var tk=tkey(r),ex=(tk&&byT[tk])||byN[nkey(r)],method=mget(r),who=matchWho(r.who);
   if(!ex){var o={id:uid(),key:tk,name:r.name,contact:r.contact||"",item:r.item||"Hoodie",size:r.size||"",qty:Math.max(1,parseInt(r.qty)||1),paid:isPaid(r.paid),method:method,addr:r.addr||"",slot:method==="pickup"?canon(r.slot||""):"",who:who,know:r.who||"",notes:r.notes||"",packed:false,done:false,created:Date.now()};
-   S.orders.push(o);if(tk)byT[tk]=o;byN[nkey(o)]=o;added++;return}
+   S.orders.push(o);if(tk)byT[tk]=o;byN[nkey(o)]=o;added++;
+   var um=S.orders.filter(function(x){return x.unmatched&&x!==o&&(cmatch(x.contact,o.contact)||nmatch(x.name,o.name))})[0];if(um)mergeInto(um,o);return}
   var ch=false;function set(k,v){if(v&&ex[k]!==v){ex[k]=v;ch=true}}
   if(tk&&!ex.key)ex.key=tk;
   set("name",r.name);set("contact",r.contact);set("size",r.size);set("addr",r.addr);
@@ -195,10 +196,17 @@ function syncRows(list){var added=0,upd=0,same=0,byT={},byN={};
 function nmatch(a,b){if(nz(a)&&nz(a)===nz(b))return true;var x=String(a||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/),y=String(b||"").toLowerCase().replace(/[^a-z\s]/g,"").trim().split(/\s+/);
  return x.length>1&&y.length>1&&x[0]===y[0]&&x[x.length-1][0]===y[y.length-1][0]}
 function cmatch(a,b){var x=cinfo(a),y=cinfo(b);if(x.e.some(function(m){return y.e.indexOf(m)>-1}))return true;return x.d.length>=10&&y.d.length>=10&&(x.d.indexOf(y.d)>-1||y.d.indexOf(x.d)>-1)}
-function applyChoices(rows){var res={matched:0,added:0};
- rows.forEach(function(c){var meth=c.choice==="shipping"?"delivery":(c.choice==="other"?"other":"pickup");
-  var hit=S.orders.filter(function(o){return nmatch(c.name,o.name)&&cmatch(c.contact,o.contact)});
-  if(!hit.length){var n={id:uid(),key:"",name:c.name,contact:c.contact,item:"Hoodie",size:"",qty:1,paid:false,method:meth,addr:"",slot:"",who:"",know:"",notes:"No matching order found",packed:false,done:false,created:Date.now()};S.orders.push(n);hit=[n];res.added++}else res.matched++;
+function mergeInto(src,tgt){["method","slot","addr","know"].forEach(function(k){if(src[k])tgt[k]=src[k]});if(src.who&&!tgt.who)tgt.who=src.who;S.orders=S.orders.filter(function(o){return o!==src})}
+function findOrder(c){var os=S.orders.filter(function(o){return !o.unmatched}),
+ a=os.filter(function(o){return nmatch(c.name,o.name)&&cmatch(c.contact,o.contact)});if(a.length)return{hit:a,how:"full"};
+ a=os.filter(function(o){return cmatch(c.contact,o.contact)});if(a.length)return{hit:a,how:"contact"};
+ a=os.filter(function(o){return nmatch(c.name,o.name)});var nm={};a.forEach(function(o){nm[nz(o.name)]=1});
+ if(a.length&&Object.keys(nm).length===1)return{hit:a,how:"name"};return{hit:[],how:""}}
+function applyChoices(rows){var res={full:0,contact:0,name:0,added:0};
+ rows.forEach(function(c){var meth=c.choice==="shipping"?"delivery":(c.choice==="other"?"other":"pickup"),f=findOrder(c),hit=f.hit;
+  if(hit.length)res[f.how]++;
+  else{var um=S.orders.filter(function(o){return o.unmatched&&(cmatch(c.contact,o.contact)||nmatch(c.name,o.name))})[0];
+   if(um)hit=[um];else{var n={id:uid(),key:"",name:c.name,contact:c.contact,item:"Hoodie",size:"",qty:1,paid:false,unmatched:true,method:meth,addr:"",slot:"",who:"",know:"",notes:"",packed:false,done:false,created:Date.now()};S.orders.push(n);hit=[n];res.added++}}
   hit.forEach(function(o){o.method=meth;o.slot=meth==="pickup"?canon(c.slot||""):"";if(meth==="delivery")o.addr=c.address||o.addr||"";
    if(c.knows){o.know=c.knows;if(!o.who){var w=matchWho(c.knows);if(w)o.who=w}}})});
  return res}
@@ -216,9 +224,9 @@ function tab(n){if(!isStaff())return;["dash","team"].forEach(function(t){$("tab-
 document.querySelectorAll("#nav button").forEach(function(b){b.onclick=function(){tab(b.dataset.tab)}});
 function orderRow(o,armed){var late7=late(o),hw=isDel(o)||isOther(o);
  return'<div class="o'+(o.done?" done":"")+'"><label class="ck"><input type="checkbox" data-pk="'+o.id+'"'+(o.packed?" checked":"")+'>Bagged</label>'+
- '<div class="main"><b>'+esc(o.name)+'</b><span class="mute"> '+esc(o.contact)+'</span>'+(!o.paid?'<span class="tag w">Unpaid</span>':"")+(late7?'<span class="tag w">'+age(o)+'d</span>':"")+
+ '<div class="main"><b>'+esc(o.name)+'</b><span class="mute"> '+esc(o.contact)+'</span>'+(o.unmatched?'<span class="tag w">Needs match</span>':(!o.paid?'<span class="tag w">Unpaid</span>':""))+(late7?'<span class="tag w">'+age(o)+'d</span>':"")+
  '<div class="sub">'+esc(o.item)+' '+esc(o.size)+(o.qty>1?' × '+o.qty:"")+(isDel(o)&&o.addr?' · '+esc(o.addr):"")+(o.notes?' · '+esc(o.notes):"")+(hw&&!o.who&&o.know?' · Knows: '+esc(o.know):"")+'</div></div>'+
- (hw?'<select class="who" data-who="'+o.id+'" aria-label="Handled by"><option value="">Unassigned</option>'+S.team.map(function(t){return'<option'+(o.who===t?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select>':"")+
+ (o.unmatched?'<select class="who" data-merge="'+o.id+'" aria-label="Match to an order"><option value="">Match to order…</option><option value="__new">Keep as new order</option>'+S.orders.filter(function(x){return !x.unmatched&&x!==o}).sort(function(a,b){return a.name.toLowerCase()>b.name.toLowerCase()?1:-1}).map(function(x){return'<option value="'+x.id+'">'+esc(x.name)+' · '+esc(x.size||x.item)+'</option>'}).join("")+'</select>':"")+(hw?'<select class="who" data-who="'+o.id+'" aria-label="Handled by"><option value="">Unassigned</option>'+S.team.map(function(t){return'<option'+(o.who===t?" selected":"")+'>'+esc(t)+'</option>'}).join("")+'</select>':"")+
  '<label class="ck"><input type="checkbox" data-dn="'+o.id+'"'+(o.done?" checked":"")+'>Handed off</label>'+
  '<button class="x" data-del="'+o.id+'" aria-label="Delete order">'+(armed===o.id?"Delete?":"×")+'</button></div>'}
 var armD=null,armT=null;
@@ -274,11 +282,12 @@ $("b-ch").onclick=async function(){try{var rows=await api("GET","fulfillment_cho
  if(!rows||!rows.length){say("No new choices");return}
  var r=applyChoices(rows);save();render();
  await api("PATCH","fulfillment_choices?id=in.("+rows.map(function(x){return x.id}).join(",")+")",{imported:true},{Prefer:"return=minimal"});
- say(rows.length+" choices applied"+(r.added?" · "+r.added+" without a matching order":""));checkChoices()}
+ say(rows.length+" choices applied"+(r.contact?" · "+r.contact+" matched by contact only":"")+(r.name?" · "+r.name+" matched by name only":"")+(r.added?" · "+r.added+" need matching":""));checkChoices()}
  catch(e){say("Couldn’t load choices. "+String(e.message).slice(0,80))}};
 function find(id){return S.orders.filter(function(x){return x.id===id})[0]}
 document.addEventListener("change",function(e){var t=e.target,d=t.dataset,o;
  if(d.staff){if(t.value)S.staff[d.staff]=t.value;else delete S.staff[d.staff]}
+ else if(d.merge&&(o=find(d.merge))){var v=t.value;if(v==="__new"){o.unmatched=false;o.paid=true}else if(v){var tg=find(v);if(tg)mergeInto(o,tg)}}
  else if(d.who&&(o=find(d.who)))o.who=t.value;
  else if(d.pk&&(o=find(d.pk)))o.packed=t.checked;
  else if(d.dn&&(o=find(d.dn)))o.done=t.checked;
